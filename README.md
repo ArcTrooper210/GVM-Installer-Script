@@ -9,6 +9,7 @@ Run with `sudo bash gvmInstaller.sh`
 
 ## Credits
 Libellux </br>
+Debian Team </br>
 Greenbone Community Forums
 
 ## Disclaimer
