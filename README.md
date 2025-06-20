@@ -2,10 +2,24 @@
 Bash installer for [Greenbone Community Edition](https://greenbone.github.io/docs/latest/22.4/source-build/index.html).
 
 ## Supported OS
-* Ubuntu 22.04 LTS
+Ubuntu 22.04 LTS
 
 ## Usage
-Run with `sudo bash gvmInstaller.sh`
+Run with `sudo bash gvmInstaller.sh --[validFlag]`
+
+### Valid arguments
+```
+--help | h      Show this help page
+--https         Install GVM with https setup
+--start         Start all GVM Services
+--stop          Stop all GVM Services
+--status        Prints status of all GVM Services
+--restart       Restarts all GVM Services
+--uninstall     Uninstall GVM
+```
+
+## Features
+test
 
 ## Credits
 Libellux </br>
