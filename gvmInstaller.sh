@@ -245,10 +245,8 @@ uninstall_greenbone () {
 if [[ $1 == -* ]]; then
     case "$1" in
     	--https)
-            echo "HTTPS install unavailable..."
-            exit 0
-            # echo -e "${INFO}[>]${CLR} HTTPS Install selected..."
-            # HTTP="https"
+	    infoi "HTTPS Install selected..."
+            HTTP="https"
 			;;
         --help|-h)
             show_help
