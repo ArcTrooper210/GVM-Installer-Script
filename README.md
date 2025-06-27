@@ -2,12 +2,14 @@
 Bash installer for [Greenbone Community Edition](https://greenbone.github.io/docs/latest/22.4/source-build/index.html).
 
 ## Supported OS
-Ubuntu 22.XX LTS
+Ubuntu 24.XX LTS
 
 ## Features
-- HTTP and HTTPS installer for GSAD (default: http)
+- HTTP and HTTPS installer options for GSAD (default: http)
 - Ability to Start/Stop/Restart/Check status of all GVM services
 - Built in uninstaller
+- Automated checks for proper install
+- Minimal user interaction
 
 ## Usage
 Run with `sudo bash gvmInstaller.sh --validFlag`
@@ -20,6 +22,12 @@ Run with `sudo bash gvmInstaller.sh --validFlag`
 --restart       Restarts all GVM Services
 --uninstall     Uninstall GVM
 ```
+
+## Troubleshooting
+> [!warning] Warning about line endings.
+> Sometimes GitHub will convert the script from LF to CRLF, which will break the script. You will need to manually convert back to LF line endings if you get errors similar to this: </br>
+> `'\r': command not found` or `syntax error near unexpected token $'{\r'`
+
 
 ## Credits
 Greenbone Community Forums</br>
