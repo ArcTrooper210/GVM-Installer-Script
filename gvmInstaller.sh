@@ -409,11 +409,13 @@ if [ -z "$LATEST_TAG" ]; then
 else
     VER_LATEST=${LATEST_TAG:1}
     VER_INST=${INSTALLER_VERSION:1}
-    if dpkg --compare-versions "$VER_LATEST" gt "$VER_INST"; then
+    if dpkg --compare-versions "$VER_INST" lt "$VER_LATEST"; then
         echo "✨ A new version is available: $LATEST_TAG (you have $INSTALLER_VERSION)."
         echo "🔗 Release notes: https://github.com/ArcTrooper210/GVM-Installer-Script/releases/latest"
-    else
+    elif dpkg --compare-versions "$VER_INST" gt "$VER_LATEST"; then
         echo -e "\e[2m\e[1m\e[31mHow do you have a version newer than release...\e[0m"
+    else
+        successi "You have the latest version"
     fi
 fi
 
@@ -531,14 +533,14 @@ mkdir -p $INSTALL_DIR
 
 
 # ──── Install dependencies ————————————————————————————————————
-# infoi "Updating packages..."
-# apt-get update && apt-get upgrade -y
-# infoi "Installing Dependencies..."
-# NEEDRESTART_MODE=a apt-get install --no-install-recommends -y build-essential curl cmake pkg-config python3 python3-pip gnupg libcjson-dev libcurl4-gnutls-dev libgcrypt-dev libglib2.0-dev libgnutls28-dev libgpgme-dev libhiredis-dev libnet1-dev libpaho-mqtt-dev libpcap-dev libssh-dev libxml2-dev uuid-dev libldap2-dev libradcli-dev libbsd-dev libical-dev libpq-dev postgresql-server-dev-all rsync xsltproc dpkg fakeroot gnutls-bin gpgsm nsis openssh-client python3-lxml rpm smbclient snmp socat sshpass texlive-fonts-recommended texlive-latex-extra wget xmlstarlet zip libbrotli-dev libmicrohttpd-dev gcc-mingw-w64 libpopt-dev libunistring-dev heimdal-multidev perl-base bison libgcrypt20-dev libksba-dev nmap libjson-glib-dev krb5-multidev libsnmp-dev python3-setuptools python3-packaging python3-wrapt python3-cffi python3-psutil python3-defusedxml python3-paramiko python3-redis python3-gnupg python3-paho-mqtt libssl-dev python3-venv cargo postgresql python3-impacket
-# apt-get install -y rustup
+infoi "Updating packages..."
+apt-get update && apt-get upgrade -y
+infoi "Installing Dependencies..."
+NEEDRESTART_MODE=a apt-get install --no-install-recommends -y build-essential curl cmake pkg-config python3 python3-pip gnupg libcjson-dev libcurl4-gnutls-dev libgcrypt-dev libglib2.0-dev libgnutls28-dev libgpgme-dev libhiredis-dev libnet1-dev libpaho-mqtt-dev libpcap-dev libssh-dev libxml2-dev uuid-dev libldap2-dev libradcli-dev libbsd-dev libical-dev libpq-dev postgresql-server-dev-all rsync xsltproc dpkg fakeroot gnutls-bin gpgsm nsis openssh-client python3-lxml rpm smbclient snmp socat sshpass texlive-fonts-recommended texlive-latex-extra wget xmlstarlet zip libbrotli-dev libmicrohttpd-dev gcc-mingw-w64 libpopt-dev libunistring-dev heimdal-multidev perl-base bison libgcrypt20-dev libksba-dev nmap libjson-glib-dev krb5-multidev libsnmp-dev python3-setuptools python3-packaging python3-wrapt python3-cffi python3-psutil python3-defusedxml python3-paramiko python3-redis python3-gnupg python3-paho-mqtt libssl-dev python3-venv cargo postgresql python3-impacket
+apt-get install -y rustup
 
-# infoi "Updating rustup..."
-# rustup default stable
+infoi "Updating rustup..."
+rustup default stable
 
 
 # ————— Importing the Greenbone Signing Key ————————————————————
