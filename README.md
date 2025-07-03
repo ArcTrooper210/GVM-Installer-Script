@@ -5,22 +5,23 @@ Bash installer for [Greenbone Community Edition](https://greenbone.github.io/doc
 Ubuntu 24.XX LTS
 
 ## Features
-- HTTP and HTTPS installer options for GSAD (default: http)
+- HTTPS and HTTP installer options for GSAD (default: https)
+- Ability to choose custom GSAD domain name
 - Ability to Start/Stop/Restart/Check status of all GVM services
-- Built in uninstaller
-- Automated checks for proper install
-- Minimal user interaction
+- Built in uninstaller (wip)
+- Checks for proper install
+- Minimal user interaction, simply run the script enter a few prompts and let it install
 
 ## Usage
-Run with `sudo bash gvmInstaller.sh --validFlag`
+`sudo bash gvmInstaller.sh --help`
 ```
 --help | -h     Show this help page
---https         Install GVM with https setup
+--http          Install GVM with http setup
 --start         Start all GVM Services
 --stop          Stop all GVM Services
 --status        Prints status of all GVM Services
 --restart       Restarts all GVM Services
---uninstall     Uninstall GVM
+--uninstall     Uninstall GVM (WiP)
 ```
 
 ## Troubleshooting
