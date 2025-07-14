@@ -26,7 +26,6 @@ Ubuntu 24.XX LTS
 
 ## Troubleshooting
 > [!WARNING]
-> Warning about line endings.
 > Sometimes GitHub will convert the script from LF to CRLF, which will break the script. You will need to manually convert back to LF line endings if you get errors similar to this: </br>
 > `'\r': command not found` or `syntax error near unexpected token $'{\r'`
 
