@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ————— Variables ——————————————————————————————————————————————
-INSTALLER_VERSION="v1.1.2"
+INSTALLER_VERSION="v1.1.1"
 LAST_UPDATED="2025-07-23"
 HTTP="https"
 LOG=/tmp/gvmInstaller.log
