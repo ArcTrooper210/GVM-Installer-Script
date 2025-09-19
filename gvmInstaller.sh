@@ -1,23 +1,14 @@
 #!/bin/bash
 
 # ————— Variables ——————————————————————————————————————————————
-INSTALLER_VERSION="v1.1.1"
-LAST_UPDATED="2025-07-23"
+INSTALLER_VERSION="v2.0.0"
+LAST_UPDATED="2025-09-19"
 HTTP="https"
 LOG=/tmp/gvmInstaller.log
 CHECK_LOG=/tmp/gvmChecksSetup.log
 FIX_LOG=/tmp/gvmFixesNeeded.log
-UNINSTALL_LOG=/tmp/gvmUninstall.log
-
-SUCC="\e[01;92m"
-SUCCH="\e[042m"
-INFO="\e[01;94m"
-INFOH="\e[44m"
-WARN="\e[01;33m"
-WARNH="\e[43m"
-ERR="\e[01;31m"
-ERRH="\e[41m"
-CLR="\e[0m"
+UNINSTALL_LOG=gvmUninstall.log
+SKIP_DEPENDENCIES=false
 
 # ————— Version variables ——————————————————————————————————————
 GVM_LIBS_VERSION=22.21.0
@@ -29,6 +20,15 @@ OPENVAS_SMB_VERSION=22.5.7
 OPENVAS_SCANNER_VERSION=23.17.0
 OSPD_OPENVAS_VERSION=22.8.2
 OPENVAS_DAEMON=23.17.0
+# GVM_LIBS_VERSION=22.27.0
+# GVMD_VERSION=26.2.1
+# PG_GVM_VERSION=22.6.11
+# GSA_VERSION=25.3.1
+# GSAD_VERSION=24.5.4
+# OPENVAS_SMB_VERSION=22.5.10
+# OPENVAS_SCANNER_VERSION=23.23.1
+# OSPD_OPENVAS_VERSION=22.9.0
+# OPENVAS_DAEMON=23.23.1
 
 # ————— Functions ——————————————————————————————————————————————
 success ()  { echo -e "\e[92m[ OK ]  $1\e[0m"; }
@@ -51,15 +51,54 @@ erroric ()      { echo -e "    \e[31m[!] $1\e[0m"; }
 show_help () {
 	echo
 	echo "valid arguments:"
-    echo "--help            Show this help page"
-    echo "--check-setup     Checks for proper GVM installation"
-	echo "--http            Install GVM with insecure http"
-	echo "--start           Start all GVM Services"
-	echo "--stop            Stop all GVM Services"
-	echo "--status          Prints status of all GVM Services"
-	echo "--restart         Restarts all GVM Services"
-	echo "--uninstall       Uninstall GVM"
+    echo "--help|-h             Shows this help page"
+	echo "--start               Starts all GVM Services"
+	echo "--stop                Stops all GVM Services"
+	echo "--restart             Restarts all GVM Services"
+	echo "--status              Prints status of all GVM Services"
+	echo "--no-dependencies     Runs script without installing dependencies"
+    echo "--check-setup         Checks for proper GVM installation"
 	echo
+	echo "These arguments will install specific modules:"
+    echo "--install-gvm-libs            Is a dependency of openvas-scanner, gvmd, gsad and pg-gvm"
+    echo "--install-gvmd                gvmd is the main service of Greenbone"
+    echo "--install-pg-gvm              pg-gvm is a PostgreSQL extension used by gvmd"
+    echo "--install-gsa                 gsa is a JavaScript web application"
+    echo "--install-gsad                gsad serves static content like images and provides an API for gsa"
+    echo "--install-openvas-smb         openvas-smb is a helper module for openvas-scanner"
+    echo "--install-openvas-scanner     openvas-scanner is a scan engine that executes Vulnerability Tests"
+    echo "--install-ospd-openvas        ospd-openvas allows gvmd to remotely control openvas-scanner"
+    echo "--install-openvasd            OpenVASD is used for detecting vulnerable products"
+    echo "--install-feed-sync           greenbone-feed-sync is a Python script to download feed data from the Greenbone Community Feed"
+    echo "--install-gvm-tools           gvm-tools are a collection of tools that help with controlling Greenbone installations"
+    echo "--install-redis-server        Redis key/value storage is used by the scanner for handling the VT info and scan results"
+    echo "--install-postgresql          PostgreSQL is used as a central storage for user and scan information for gvmd"
+    echo "--set-scan-permissions        Gives vulnurability scanner proper sudo permissions"
+    echo "--servicefile-ospd-openvas    Creates ospd-openvas service file"
+    echo "--servicefile-gvmd            Creates gvmd service file"
+    echo "--servicefile-gsad            Creates gsad service file"
+    echo "--servicefile-openvasd        Creates openvasd service file"
+    echo "--feed-validation             Installs Greenbone GnuPG keychain to validate feed content"
+    echo "--create-cronjob              Creates a cronjob to run greenbone-feed-sync every quarter"
+    echo "--create-gvm-user             Creates gvm user and group"
+    echo
+}
+
+check_existing_log () {
+    if [[ -e $LOG && -s $LOG ]]; then
+        mv -T $LOG "${LOG%%.*}"-backup."${LOG##*.}"
+        true > $LOG
+    fi
+
+    if [[ -e $CHECK_LOG && -s $CHECK_LOG ]]; then
+        mv -T $CHECK_LOG "${CHECK_LOG%%.*}"-backup."${CHECK_LOG##*.}"
+        true > $CHECK_LOG
+    fi
+
+    if [[ -e $FIX_LOG && -s $FIX_LOG ]]; then
+        mv -T $FIX_LOG "${FIX_LOG%%.*}"-backup."${FIX_LOG##*.}"
+        true > $FIX_LOG
+    fi
 }
 
 start_services () {
@@ -217,13 +256,12 @@ uninstall_greenbone () {
 }
 
 check_setup () {
-    # This check function is based on the Debian gvm-check-setup
     CHECK_PASSED=true
     
-    info "Checking for proper GVM install..."
+    info "Checking for proper GVM install..." | tee -a $CHECK_LOG
     infoi "Checking for GVMD..." | tee -a $CHECK_LOG
     gvmd --version &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "GVMD is installed" | tee -a $CHECK_LOG
     else
         errorc "GVMD not found. Please install GVMD" | tee -a $CHECK_LOG
@@ -233,7 +271,7 @@ check_setup () {
 
     infoi "Checking for GSAD..." | tee -a $CHECK_LOG
     gsad --version &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "GSAD is installed" | tee -a $CHECK_LOG
     else
         errorc "GSAD not found. Please install GSAD" | tee -a $CHECK_LOG
@@ -243,7 +281,7 @@ check_setup () {
 
     infoi "Checking for Openvas..." | tee -a $CHECK_LOG
     openvas --version &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "Openvas is installed" | tee -a $CHECK_LOG
     else
         errorc "Openvas not found. Please install Openvas" | tee -a $CHECK_LOG
@@ -253,7 +291,7 @@ check_setup () {
 
     infoi "Checking for Postgresql" | tee -a $CHECK_LOG
     psql -V &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "Postgresql is installed" | tee -a $CHECK_LOG
         local PSQL=true
     else
@@ -265,12 +303,12 @@ check_setup () {
 
     infoi "Checking for redis-server..." | tee -a $CHECK_LOG
     redis-server --version &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "Redis-server is installed" | tee -a $CHECK_LOG
 
         infoi "Checking for proper redis-server config..." | tee -a $CHECK_LOG
         local REDISCONF=$(grep db_address /etc/openvas/openvas.conf | sed -e 's/^db_address = //') &>>$CHECK_LOG
-        if [ -z "$REDISCONF" ]; then
+        if [[ -z "$REDISCONF" ]]; then
             errorc "Scanner is not configured to use redis-scanner socket" | tee -a $CHECK_LOG
             infoic "Configure the db_address of openvas to use redis-server socket" | tee -a $CHECK_LOG
             CHECK_PASSED=false
@@ -284,22 +322,20 @@ check_setup () {
     fi
     
 
-    if [ $HTTP = "https" ]; then
-        infoi "Validating GVM certificates..." | tee -a $CHECK_LOG
-        gvm-manage-certs -V &>>$CHECK_LOG
-        if [ $? -eq 0 ]; then
-            successc "GVM certificates passed validation" | tee -a $CHECK_LOG
-        else
-            errorc "GVM certificates did not pass validation" | tee -a $CHECK_LOG
-            infoic "Generate new certificates by running: gvm-manage-certs -aqf" | tee -a $CHECK_LOG
-            CHECK_PASSED=false
-        fi
+    infoi "Validating GVM certificates..." | tee -a $CHECK_LOG
+    gvm-manage-certs -V &>>$CHECK_LOG
+    if [[ $? -eq 0 ]]; then
+        successc "GVM certificates passed validation" | tee -a $CHECK_LOG
+    else
+        errorc "GVM certificates did not pass validation" | tee -a $CHECK_LOG
+        infoic "Generate new certificates by running: gvm-manage-certs -aqf" | tee -a $CHECK_LOG
+        CHECK_PASSED=false
     fi
 
 
     infoi "Checking for users..." | tee -a $CHECK_LOG
     local admin=$(/usr/local/sbin/gvmd --get-users) &>>$CHECK_LOG
-    if [ -z "$admin" ]; then
+    if [[ -z "$admin" ]]; then
         errorc "No users found" | tee -a $CHECK_LOG
         infoic "Create a user by running: sudo gvmd --create-user=[name] --password=[password]" | tee -a $CHECK_LOG
         CHECK_PASSED=false
@@ -309,17 +345,17 @@ check_setup () {
 
 
     infoi "Checking feed import owner..." | tee -a $CHECK_LOG
-    if [ $PSQL = true ]; then
+    if [[ $PSQL = true ]]; then
         sudo -u gvm psql -d gvmd -c "SELECT uuid, name, value FROM settings WHERE uuid = '78eceaec-3385-11ea-b237-28d24461215b'" | sed -n '3p' | grep -qF "$FEED_OWNER_UID"
-        if [ $? -eq 0 ]; then
+        if [[ $? -eq 0 ]]; then
             successc "Correct feed import owner set" | tee -a $CHECK_LOG
         else
             errorc "Feed import owner not set properly" | tee -a $CHECK_LOG
-            infoic "Manually set feed owner by running: sudo /usr/local/sbin/gvmd --modify-setting 78eceaec-3385-11ea-b237-28d24461215b --value \`sudo /usr/local/sbin/gvmd --get-users --verbose | grep \$ADUSER | awk '{print \$2}'\`" | tee -a $CHECK_LOG
+            infoic "Manually set feed owner by running: sudo /usr/local/sbin/gvmd --modify-setting 78eceaec-3385-11ea-b237-28d24461215b --value \`sudo /usr/local/sbin/gvmd --get-users --verbose | grep \$ADUSER | awk '{print \$2}'\`" | tee -a $CHECK_LOG | tee -a $FIX_LOG
             CHECK_PASSED=false
         fi
     else
-        errorc "Feed import owner not found because Postgresql is not installed" | tee -a $CHECK_LOG
+        errorc "Feed import owner not found because Postgresql is not installed" | tee -a $CHECK_LOG | tee -a $FIX_LOG
         CHECK_PASSED=false
     fi
 
@@ -327,67 +363,67 @@ check_setup () {
     infoi "Checking system unit files..."
     systemctl is-enabled --quiet ospd-openvas &>>$CHECK_LOG
     local ec=$?
-    if [ $ec -eq 0 ]; then
+    if [[ $ec -eq 0 ]]; then
         successc "ospd-openvas enabled." | tee -a $CHECK_LOG
-    elif [ $ec -eq 4 ]; then
+    elif [[ $ec -eq 4 ]]; then
         erroric "ospd-openvas unit file doesn't exist!" | tee -a $CHECK_LOG
         infoic "Attempting to fix..." | tee -a $CHECK_LOG
         service_file_ospd_openvas
     else
         erroric "ospd-openvas not enabled." | tee -a $CHECK_LOG
-        infoic "Run: sudo systemctl enable ospd-openvas" | tee -a $CHECK_LOG
+        warni "Run: sudo systemctl enable ospd-openvas" | tee -a $CHECK_LOG
         CHECK_PASSED=false
     fi
     
     local SERVICE="gvmd"
     systemctl is-enabled --quiet $SERVICE &>>$CHECK_LOG
     ec=$?
-    if [ $ec -eq 0 ]; then
+    if [[ $ec -eq 0 ]]; then
         successc "$SERVICE enabled." | tee -a $CHECK_LOG
-    elif [ $ec -eq 4 ]; then
+    elif [[ $ec -eq 4 ]]; then
         erroric "$SERVICE unit file doesn't exist!" | tee -a $CHECK_LOG
         infoic "Attempting to fix..." | tee -a $CHECK_LOG
         service_file_${SERVICE}
     else
         erroric "$SERVICE not enabled. Do this manually." | tee -a $CHECK_LOG
-        infoic "Run: sudo systemctl enable $SERVICE" | tee -a $CHECK_LOG
+        warni "Run: sudo systemctl enable $SERVICE" | tee -a $CHECK_LOG
         CHECK_PASSED=false
     fi
     
-    SERVICE="gsad"
+    local SERVICE="gsad"
     systemctl is-enabled --quiet $SERVICE &>>$CHECK_LOG
     ec=$?
-    if [ $ec -eq 0 ]; then
+    if [[ $ec -eq 0 ]]; then
         successc "$SERVICE enabled." | tee -a $CHECK_LOG
-    elif [ $ec -eq 4 ]; then
+    elif [[ $ec -eq 4 ]]; then
         erroric "$SERVICE unit file doesn't exist!" | tee -a $CHECK_LOG
         infoic "Attempting to fix..." | tee -a $CHECK_LOG
         service_file_${SERVICE}
     else
         erroric "$SERVICE not enabled. Do this manually." | tee -a $CHECK_LOG
-        infoic "Run: sudo systemctl enable $SERVICE" | tee -a $CHECK_LOG
+        warni "Run: sudo systemctl enable $SERVICE" | tee -a $CHECK_LOG
         CHECK_PASSED=false
     fi
     
-    SERVICE="openvasd"
+    local SERVICE="openvasd"
     systemctl is-enabled --quiet $SERVICE &>>$CHECK_LOG
     ec=$?
-    if [ $ec -eq 0 ]; then
+    if [[ $ec -eq 0 ]]; then
         successc "$SERVICE enabled." | tee -a $CHECK_LOG
-    elif [ $ec -eq 4 ]; then
+    elif [[ $ec -eq 4 ]]; then
         erroric "$SERVICE unit file doesn't exist!" | tee -a $CHECK_LOG
         infoic "Attempting to fix..." | tee -a $CHECK_LOG
         service_file_${SERVICE}
     else
         erroric "$SERVICE not enabled. Do this manually." | tee -a $CHECK_LOG
-        infoic "Run: sudo systemctl enable $SERVICE" | tee -a $CHECK_LOG
+        warni "Run: sudo systemctl enable $SERVICE" | tee -a $CHECK_LOG
         CHECK_PASSED=false
     fi
 
 
     info "Checking for running services"
     systemctl is-active ospd-openvas &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "ospd-openvas is running" | tee -a $CHECK_LOG
     else
         errorc "ospd-openvas is not running" | tee -a $CHECK_LOG
@@ -395,7 +431,7 @@ check_setup () {
     fi
 
     systemctl is-active gvmd &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "gvmd is running" | tee -a $CHECK_LOG
     else
         errorc "gvmd is not running" | tee -a $CHECK_LOG
@@ -403,7 +439,7 @@ check_setup () {
     fi
 
     systemctl is-active gsad &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "gsad is running" | tee -a $CHECK_LOG
     else
         errorc "gsad is not running" | tee -a $CHECK_LOG
@@ -411,7 +447,7 @@ check_setup () {
     fi
 
     systemctl is-active openvasd &>>$CHECK_LOG
-    if [ $? -eq 0 ]; then
+    if [[ $? -eq 0 ]]; then
         successc "openvasd is running" | tee -a $CHECK_LOG
     else
         errorc "openvasd is not running" | tee -a $CHECK_LOG
@@ -421,8 +457,8 @@ check_setup () {
 
 # ————— Script functions ———————————————————————————————————————
 check_sig () {
-    gpg --verify $1 $2
-    if [ $? -eq 0 ]; then
+    gpg --verify $1 $2 &>>$LOG
+    if [[ $? -eq 0 ]]; then
         success "Good signature." | tee -a $LOG
         sleep 2
     else
@@ -458,28 +494,28 @@ admin_setup () {
         fi
     done
 
-    while [ $CONFIRMP -lt 1 ]; do
+    while (( $CONFIRMP < 1 )); do
         read -sp "Set password for admin user: " ADPW
-        if [ -z "$ADPW" ]; then
+        if [[ -z "$ADPW" ]]; then
             echo
-            warni "Password cannot be empty!" | tee -a $LOG
-            CONFIRMP=0
+            warni "Password cannot be empty!"
+            continue
         else
             echo
             read -sp "Confirm password for admin user: " ADPW2
-            if [ -z "$ADPW2" ]; then
+            if [[ -z "$ADPW2" ]]; then
                 echo
-                warni "Password cannot be empty!" | tee -a $LOG
-                CONFIRMP=0
+                warni "Password cannot be empty!"
+                continue
             else
-                if [ "$ADPW" == "$ADPW2" ]; then
+                if [[ "$ADPW" == "$ADPW2" ]]; then
                     echo
                     successi "Admin password successfully set." | tee -a $LOG
                     CONFIRMP=1
                 else
                     echo
-                    warni "Passwords do not match" | tee -a $LOG
-                    CONFIRMP=0
+                    warni "Passwords do not match"
+                    continue
                 fi
             fi
         fi
@@ -540,20 +576,31 @@ prev_install_check () {
 prepare_update () {
     stop_services
     sleep 3
-    local INSTALLED_GVMD_VER=$(sudo gvmd --version | head -n1 | awk '{print $4}' | tee -a $LOG)
+    local INSTALLED_GVMD_VER=$(gvmd --version | head -n1 | awk '{print $4}' | tee -a $LOG)
     if dpkg --compare-versions "$INSTALLED_GVMD_VER" lt "$GVMD_VERSION"; then
         for PKG in ospd-openvas greenbone-feed-sync gvm-tools; do
             if python3 -m pip show $PKG  &>>$LOG; then
                 infoi "Uninstalling '$PKG'..." | tee -a $LOG
                 python3 -m pip uninstall --break-system-packages -y $PKG &>>$LOG
-                if [ $? -ne 0 ]; then
-                    error "Failed to automatically uninstall old Python GVM modules. Manually uninstall and run script again." | tee -a $LOG
-                    error "sudo python3 -m pip uninstall --break-system-packages -y $PKG" | tee -a $LOG
+                if [[ $? -ne 0 ]]; then
+                    error "Failed to automatically uninstall old Python GVM modules. Manually uninstall and run script again." | tee -a $LOG | tee -a $FIX_LOG
+                    error "Run: sudo python3 -m pip uninstall --break-system-packages -y $PKG" | tee -a $LOG | tee -a $FIX_LOG
                     exit 1
                 fi
             fi
         done
     fi
+}
+
+install_dependencies () {
+    infoi "Updating packages..." | tee -a $LOG
+    apt-get update -qy &>>$LOG
+    apt-get upgrade -qy &>>$LOG
+    infoi "Installing Dependencies..." | tee -a $LOG
+    NEEDRESTART_MODE=a apt-get install --no-install-recommends -qy build-essential curl cmake pkg-config python3 python3-pip gnupg libcjson-dev libcurl4-gnutls-dev libgcrypt-dev libglib2.0-dev libgnutls28-dev libgpgme-dev libhiredis-dev libnet1-dev libpaho-mqtt-dev libpcap-dev libssh-dev libxml2-dev uuid-dev libldap2-dev libradcli-dev libbsd-dev libical-dev libpq-dev postgresql-server-dev-all rsync xsltproc dpkg fakeroot gnutls-bin gpgsm nsis openssh-client python3-lxml rpm smbclient snmp socat sshpass texlive-fonts-recommended texlive-latex-extra wget xmlstarlet zip libbrotli-dev libmicrohttpd-dev gcc-mingw-w64 libpopt-dev libunistring-dev heimdal-multidev perl-base bison libgcrypt20-dev libksba-dev nmap libjson-glib-dev krb5-multidev libsnmp-dev python3-setuptools python3-packaging python3-wrapt python3-cffi python3-psutil python3-defusedxml python3-paramiko python3-redis python3-gnupg python3-paho-mqtt libssl-dev python3-venv postgresql python3-impacket rustup &>>$LOG
+
+    infoi "Updating rustup..." | tee -a $LOG
+    rustup default stable &>>$LOG
 }
 
 # ————— GVM component functions ————————————————————————————————
@@ -624,6 +671,14 @@ install_gvmd () {
     mkdir -p $INSTALL_DIR/gvmd &>>$LOG && cd $BUILD_DIR/gvmd
     make DESTDIR=$INSTALL_DIR/gvmd install &>>$LOG
     cp -rv $INSTALL_DIR/gvmd/* / &>>$LOG
+
+    if command -v gvmd &>>$LOG; then
+        successi "gvmd successfully installed!" | tee -a $LOG
+    else
+        errori "Failed to install gvmd" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "View '$LOG' to check for errors, then run the script again with the --install-gvmd flag to install gvmd" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
+    fi
 }
 
 install_pg_gvm () {
@@ -697,6 +752,14 @@ install_gsad () {
     mkdir -p $INSTALL_DIR/gsad &>>$LOG && cd $BUILD_DIR/gsad
     make DESTDIR=$INSTALL_DIR/gsad install &>>$LOG
     cp -rv $INSTALL_DIR/gsad/* / &>>$LOG
+
+    if command -v gsad; then
+        successi "gsad successfully installed!" | tee -a $LOG
+    else
+        errori "Failed to install gsad " | tee -a $LOG | tee -a $FIX_LOG
+        infoi "View '$LOG' to check for errors, then run the script again with the --install-gsad flag to install gsad again" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
+    fi
 }
 
 install_openvas_smb () {
@@ -773,6 +836,15 @@ install_ospd_openvas () {
     mkdir -p $INSTALL_DIR/ospd-openvas &>>$LOG
     python3 -m pip install --root=$INSTALL_DIR/ospd-openvas --no-warn-script-location . &>>$LOG
     cp -rv $INSTALL_DIR/ospd-openvas/* / &>>$LOG
+
+    if command -v ospd-openvas &>>$LOG; then
+        successi "ospd-openvas successfully installed!" | tee -a $LOG
+    else
+        errori "Failed to install ospd-openvas" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Check '$LOG' for more details" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Then run the script again with the --install-ospd-openvas flag to install ospd-openvas" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
+    fi
 }
 
 install_openvasd () {
@@ -798,6 +870,15 @@ install_openvasd () {
     cp -v ../../target/release/openvasd $INSTALL_DIR/openvasd/usr/local/bin/ &>>$LOG
     cp -v ../../target/release/scannerctl $INSTALL_DIR/openvasd/usr/local/bin/ &>>$LOG
     cp -rv $INSTALL_DIR/openvasd/* / &>>$LOG
+
+    if command -v openvasd &>>$LOG; then
+        successi "openvasd successfully installed!" | tee -a $LOG
+    else
+        errori "Failed to install openvasd" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Check '$LOG' for more details" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Then run the script again with the --install-openvasd flag to install openvasd" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
+    fi
 }
 
 install_feed_sync () {
@@ -805,6 +886,15 @@ install_feed_sync () {
     mkdir -p $INSTALL_DIR/greenbone-feed-sync &>>$LOG
     python3 -m pip install --root=$INSTALL_DIR/greenbone-feed-sync --no-warn-script-location greenbone-feed-sync &>>$LOG
     cp -rv $INSTALL_DIR/greenbone-feed-sync/* / &>>$LOG
+
+    if command -v greenbone-feed-sync &>>$LOG; then
+        successi "greenbone-feed-sync successfully installed!" | tee -a $LOG
+    else
+        errori "Failed to install greenbone-feed-sync" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Check '$LOG' for more details" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Then run the script again with the --install-greenbone-feed-sync flag to install greenbone-feed-sync" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
+    fi
 }
 
 install_gvm_tools () {
@@ -812,16 +902,25 @@ install_gvm_tools () {
     mkdir -p $INSTALL_DIR/gvm-tools &>>$LOG
     python3 -m pip install --root=$INSTALL_DIR/gvm-tools --no-warn-script-location gvm-tools &>>$LOG
     cp -rv $INSTALL_DIR/gvm-tools/* / &>>$LOG
+
+    if command -v gvm-cli && command -v gvm-script && command -v gvm-pyshell; then
+        successi "gvm-tools successfully installed!" | tee -a $LOG
+    else
+        errori "Failed to install gvm-tools!" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Check '$LOG' for more details" | tee -a $LOG | tee -a $FIX_LOG
+        infoi "Then run the script again with the --install-greenbone-feed-sync flag to install greenbone-feed-sync" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
+    fi
 }
 
 setup_redis_server () {
     infoi "Installing Redis Data Store..." | tee -a $LOG
-    apt install -y redis-server &>>$LOG
+    apt-get install -qy redis-server &>>$LOG
 
     infoi "Adding openvas-scanner config..." | tee -a $LOG
     cp $SOURCE_DIR/openvas-scanner-$OPENVAS_SCANNER_VERSION/config/redis-openvas.conf /etc/redis/ &>>$LOG
     chown redis:redis /etc/redis/redis-openvas.conf &>>$LOG
-    echo "db_address = /run/redis-openvas/redis.sock" | sudo tee -a /etc/openvas/openvas.conf &>>$LOG
+    echo "db_address = /run/redis-openvas/redis.sock" | tee -a /etc/openvas/openvas.conf &>>$LOG
 
     infoi "Redis startup with config..." | tee -a $LOG
     systemctl start redis-server@openvas.service &>>$LOG
@@ -832,199 +931,310 @@ setup_redis_server () {
 
     if ! getent group redis | grep -qF "gvm"; then
         errori "Failed to add gvm to redis group!" | tee -a $LOG | tee -a $FIX_LOG
-        infoi "Run: usermod -aG redis gvm" | tee -a $LOG | tee -a $FIX_LOG
+        warni "Run: usermod -aG redis gvm" | tee -a $LOG | tee -a $FIX_LOG
+        exit 1
     fi
 }
 
 feed_validation () {
-    infoi "Feed Validation..." | tee -a $LOG
-    curl_download https://www.greenbone.net/GBCommunitySigningKey.asc /tmp/GBCommunitySigningKey.asc
+    if [[ -f /tmp/GBCommunitySigningKey.asc ]]; then
+        warni "Signing key file already exists, checking if it's been imported..." | tee -a $LOG
+        if gpg --list-keys --keyid-format SHORT | grep -qF "Greenbone Community Feed integrity key"; then
+            warni "Feed validation key has already been imported, checking for proper trust level..." | tee -a $LOG
+            if gpg --list-keys --with-colons 8AE4BE429B60A59B311C2E739823FAA60ED1E580 | awk -F: '/^pub:/ {print $9}' | grep -qF "u"; then
+                warni "Key already has proper trust level..." | tee -a $LOG
+            else
+                warni "Key has wrong trust level, setting trust level 6..." | tee -a $LOG
+                echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | sudo gpg --import-ownertrust
+                if [[ $? -ne 0 ]]; then
+                    errori "Failed to set key trust level." | tee -a $LOG | tee -a $FIX_LOG
+                    infoi "Run: 'echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | sudo gpg --import-ownertrust' then run the script again." | tee -a $LOG | tee -a $FIX_LOG
+                    exit 1
+                fi
+            fi
+        else
+            infoi "Key has not been imported, importing signing key and setting trust level..." | tee -a $LOG
+            gpg --import /tmp/GBCommunitySigningKey.asc &>>$LOG
+            echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | sudo gpg --import-ownertrust
+            if [[ $? -ne 0 ]]; then
+                errori "Failed to set key trust level." | tee -a $LOG | tee -a $FIX_LOG
+                infoi "Run: 'echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | sudo gpg --import-ownertrust' then run the script again." | tee -a $LOG | tee -a $FIX_LOG
+                exit 1
+            fi
 
-    export GNUPGHOME=/tmp/openvas-gnupg
-    mkdir -p $GNUPGHOME &>>$LOG
+            export GNUPGHOME=/tmp/openvas-gnupg
+            mkdir -p $GNUPGHOME &>>$LOG
+            export OPENVAS_GNUPG_HOME=/etc/openvas/gnupg
+            mkdir -p $OPENVAS_GNUPG_HOME &>>$LOG
+            cp -r /tmp/openvas-gnupg/* $OPENVAS_GNUPG_HOME/ &>>$LOG
+            chown -R gvm:gvm $OPENVAS_GNUPG_HOME &>>$LOG
+        fi
+    else
+        infoi "Creating gpg Greenbone feed validation keyring..." | tee -a $LOG
+        curl_download https://www.greenbone.net/GBCommunitySigningKey.asc /tmp/GBCommunitySigningKey.asc
 
-    gpg --import /tmp/GBCommunitySigningKey.asc &>>$LOG
-    echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | gpg --import-ownertrust &>>$LOG
+        gpg --import /tmp/GBCommunitySigningKey.asc &>>$LOG
+        echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | sudo gpg --import-ownertrust
+        if [[ $? -ne 0 ]]; then
+            errori "Failed to set key trust level." | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Run: 'echo "8AE4BE429B60A59B311C2E739823FAA60ED1E580:6:" | sudo gpg --import-ownertrust' then run the script again." | tee -a $LOG | tee -a $FIX_LOG
+            exit 1
+        fi
 
-    export OPENVAS_GNUPG_HOME=/etc/openvas/gnupg
-    mkdir -p $OPENVAS_GNUPG_HOME &>>$LOG
-    cp -r /tmp/openvas-gnupg/* $OPENVAS_GNUPG_HOME/ &>>$LOG
-    chown -R gvm:gvm $OPENVAS_GNUPG_HOME &>>$LOG
+        export GNUPGHOME=/tmp/openvas-gnupg
+        mkdir -p $GNUPGHOME &>>$LOG
+        export OPENVAS_GNUPG_HOME=/etc/openvas/gnupg
+        mkdir -p $OPENVAS_GNUPG_HOME &>>$LOG
+        cp -r /tmp/openvas-gnupg/* $OPENVAS_GNUPG_HOME/ &>>$LOG
+        chown -R gvm:gvm $OPENVAS_GNUPG_HOME &>>$LOG
+    fi
 }
 
 set_sudo_scan () {
-    infoi "Setting sudo for scanning..." | tee -a $LOG
-    warni "'No such file or directory' warning is normal..." | tee -a $LOG
-    if ! cat /etc/sudoers.d/gvm | grep -xqFe "%gvm ALL = NOPASSWD: /usr/local/sbin/openvas"; then
-        echo "%gvm ALL = NOPASSWD: /usr/local/sbin/openvas" >> /etc/sudoers.d/gvm
-        visudo -cf /etc/sudoers.d/gvm &>>$LOG
-            if [ $? -eq 0 ]; then
+    if [[ -f /etc/sudoers.d/gvm ]]; then
+        if ! grep -Fxq '%gvm ALL = NOPASSWD: /usr/local/sbin/openvas' /etc/sudoers.d/gvm; then
+            echo "%gvm ALL = NOPASSWD: /usr/local/sbin/openvas" >> /etc/sudoers.d/gvm
+            visudo -cf /etc/sudoers.d/gvm &>>$LOG
+            if [[ $? -eq 0 ]]; then
                 chmod 0440 /etc/sudoers.d/gvm &>>$LOG
                 success "Permissions successfully granted" | tee -a $LOG
             else
                 error "Couldn't create and modify /etc/sudoers.d/gvm file. Do this manually." | tee -a $LOG | tee -a $FIX_LOG
                 infoi "Add '%gvm ALL = NOPASSWD: /usr/local/sbin/openvas' to '/etc/sudoers.d/gvm'" | tee -a $LOG | tee -a $FIX_LOG
                 sleep 4
+            fi
+        else
+            info "gvm group already exists and has sufficient permissions" | tee -a $LOG
         fi
     else
-        info "gvm group already has sufficient permissions" | tee -a $LOG
+        infoi "No gvm sudoers file found, creating one..."
+        echo "%gvm ALL = NOPASSWD: /usr/local/sbin/openvas" >> /etc/sudoers.d/gvm
+        visudo -cf /etc/sudoers.d/gvm &>>$LOG
+        if [[ $? -eq 0 ]]; then
+            infoi "Granting permissions..." | tee -a $LOG
+            chmod 0440 /etc/sudoers.d/gvm &>>$LOG
+            success "Permissions successfully granted" | tee -a $LOG
+        else
+            error "Couldn't create and modify /etc/sudoers.d/gvm file. Do this manually." | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Add '%gvm ALL = NOPASSWD: /usr/local/sbin/openvas' to '/etc/sudoers.d/gvm'" | tee -a $LOG | tee -a $FIX_LOG
+            sleep 4
+        fi
     fi
 }
 
 setup_postgresql () {
     infoi "Starting PostpreSQL..." | tee -a $LOG
     systemctl start postgresql@16-main &>>$LOG
-    sleep 3
+    sleep 2
 
     infoi "Setting up PostpreSQL..." | tee -a $LOG
-    su - postgres -c "createuser -DRS gvm" &>>$LOG
-    su - postgres -c "createdb -O gvm gvmd" &>>$LOG
-    su - postgres -c "psql gvmd -q --command='create role dba with superuser noinherit;'" &>>$LOG
-    su - postgres -c "psql gvmd -q --command='grant dba to gvm;'" &>>$LOG
+
+    if sudo -u postgres psql -c "\du" | grep -qF "gvm"; then
+        warni "gvm user already exists..." | tee -a $LOG
+    else
+        infoi "Creating psql gvm user..." | tee -a $LOG
+        sudo -u postgres createuser -DRS gvm &>>$LOG
+        if [[ $? -ne 0 ]]; then
+            errori "Failed to automatically create user" | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Run: sudo -u postgres createuser -DRS gvm" | tee -a $LOG | tee -a $FIX_LOG
+            exit 1
+        fi
+    fi
+
+    if sudo -u postgres psql -c "\l" | grep -qF "gvmd"; then
+        warni "gvmd database already exists..." | tee -a $LOG
+    else
+        infoi "Creating gvmd database..." | tee -a $LOG
+        sudo -u postgres createdb -O gvm gvmd &>>$LOG
+        if [[ $? -ne 0 ]]; then
+            errori "Failed to create database" | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Run: sudo -u postgres createdb -O gvm gvmd" | tee -a $LOG | tee -a $FIX_LOG
+            exit 1
+        fi
+    fi
+
+    if sudo -u postgres psql -c "\du" | grep -qF "dba"; then
+        warni "dba role already exists..." | tee -a $LOG
+    else
+        infoi "Creating administrator role..."
+        sudo -u postgres psql gvmd -c "create role dba with superuser noinherit;" &>>$LOG
+        if [[ $? -ne 0 ]]; then
+            errori "Failed to create dba role..." | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Run: sudo -u postgres psql gvmd -c "create role dba with superuser noinherit;"" | tee -a $LOG | tee -a $FIX_LOG
+            exit 1
+        fi
+    fi
+    
+    if sudo -u postgres psql -c "\drg" | grep -qF -e "gvm" -e "dba"; then
+        warni "gvm has already been granted dbs permissions..." | tee -a $LOG
+    else
+        infoi "Granting gvm dba permissions..." | tee -a $LOG
+        sudo -u postgres psql gvmd -c "grant dba to gvm;" &>>$LOG
+        if [[ $? -ne 0 ]]; then
+            errori "Failed to grant permissions..." | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Run: sudo -u postgres psql gvmd -c "grant dba to gvm;"" | tee -a $LOG | tee -a $FIX_LOG
+            exit 1
+        fi
+    fi
 
     infoi "Restarting PostpreSQL..." | tee -a $LOG
     systemctl restart postgresql@16-main &>>$LOG
 }
 
 service_file_ospd_openvas () {
-    infoi "Creating systemd service file for ospd-openvas..." | tee -a $LOG
-    cat << EOF > $BUILD_DIR/ospd-openvas.service
-    [Unit]
-    Description=OSPD Wrapper for the OpenVAS Scanner (ospd-openvas)
-    Documentation=man:ospd-openvas(8) man:openvas(8)
-    After=network.target networking.service redis-server@openvas.service openvasd.service
-    Wants=redis-server@openvas.service openvasd.service
-    ConditionKernelCommandLine=!recovery
+    if [[ -f /etc/systemd/system/ospd-openvas.service ]]; then
+        warni "ospd-openvas service file already exists, skipping creation..."
+    else
+        infoi "Creating systemd service file for ospd-openvas..." | tee -a $LOG
+        cat << EOF > $BUILD_DIR/ospd-openvas.service
+        [Unit]
+        Description=OSPD Wrapper for the OpenVAS Scanner (ospd-openvas)
+        Documentation=man:ospd-openvas(8) man:openvas(8)
+        After=network.target networking.service redis-server@openvas.service openvasd.service
+        Wants=redis-server@openvas.service openvasd.service
+        ConditionKernelCommandLine=!recovery
 
-    [Service]
-    Type=exec
-    User=gvm
-    Group=gvm
-    RuntimeDirectory=ospd
-    RuntimeDirectoryMode=2775
-    PIDFile=/run/ospd/ospd-openvas.pid
-    ExecStart=/usr/local/bin/ospd-openvas --foreground --unix-socket /run/ospd/ospd-openvas.sock --pid-file /run/ospd/ospd-openvas.pid --log-file /var/log/gvm/ospd-openvas.log --lock-file-dir /var/lib/openvas --socket-mode 0o770 --notus-feed-dir /var/lib/notus/advisories
-    SuccessExitStatus=SIGKILL
-    Restart=always
-    RestartSec=60
+        [Service]
+        Type=exec
+        User=gvm
+        Group=gvm
+        RuntimeDirectory=ospd
+        RuntimeDirectoryMode=2775
+        PIDFile=/run/ospd/ospd-openvas.pid
+        ExecStart=/usr/local/bin/ospd-openvas --foreground --unix-socket /run/ospd/ospd-openvas.sock --pid-file /run/ospd/ospd-openvas.pid --log-file /var/log/gvm/ospd-openvas.log --lock-file-dir /var/lib/openvas --socket-mode 0o770 --notus-feed-dir /var/lib/notus/advisories
+        SuccessExitStatus=SIGKILL
+        Restart=always
+        RestartSec=60
 
-    [Install]
-    WantedBy=multi-user.target
+        [Install]
+        WantedBy=multi-user.target
 EOF
-
-    infoi "Installing systemd service file for ospd-openvas..." | tee -a $LOG
-    cp -v $BUILD_DIR/ospd-openvas.service /etc/systemd/system/ &>>$LOG
+        infoi "Installing systemd service file for ospd-openvas..." | tee -a $LOG
+        cp -v $BUILD_DIR/ospd-openvas.service /etc/systemd/system/ &>>$LOG
+    fi
 }
 
 service_file_gvmd () {
-    infoi "Creating systemd service file for gvmd..." | tee -a $LOG
-    cat << EOF > $BUILD_DIR/gvmd.service
-    [Unit]
-    Description=Greenbone Vulnerability Manager daemon (gvmd)
-    After=network.target networking.service postgresql.service ospd-openvas.service
-    Wants=postgresql.service ospd-openvas.service
-    Documentation=man:gvmd(8)
-    ConditionKernelCommandLine=!recovery
+    if [[ -f /etc/systemd/system/gvmd.service ]]; then
+        warni "gvmd service file already exists, skipping creation..."
+    else
+        infoi "Creating systemd service file for gvmd..." | tee -a $LOG
+        cat << EOF > $BUILD_DIR/gvmd.service
+        [Unit]
+        Description=Greenbone Vulnerability Manager daemon (gvmd)
+        After=network.target networking.service postgresql.service ospd-openvas.service
+        Wants=postgresql.service ospd-openvas.service
+        Documentation=man:gvmd(8)
+        ConditionKernelCommandLine=!recovery
 
-    [Service]
-    Type=exec
-    User=gvm
-    Group=gvm
-    PIDFile=/run/gvmd/gvmd.pid
-    RuntimeDirectory=gvmd
-    RuntimeDirectoryMode=2775
-    ExecStart=/usr/local/sbin/gvmd --foreground --osp-vt-update=/run/ospd/ospd-openvas.sock --listen-group=gvm
-    Restart=always
-    TimeoutStopSec=10
+        [Service]
+        Type=exec
+        User=gvm
+        Group=gvm
+        PIDFile=/run/gvmd/gvmd.pid
+        RuntimeDirectory=gvmd
+        RuntimeDirectoryMode=2775
+        ExecStart=/usr/local/sbin/gvmd --foreground --osp-vt-update=/run/ospd/ospd-openvas.sock --listen-group=gvm
+        Restart=always
+        TimeoutStopSec=10
 
-    [Install]
-    WantedBy=multi-user.target
+        [Install]
+        WantedBy=multi-user.target
 EOF
-
-    infoi "Installing systemd service file for gvmd..." | tee -a $LOG
-    cp -v $BUILD_DIR/gvmd.service /etc/systemd/system/ &>>$LOG
+        infoi "Installing systemd service file for gvmd..." | tee -a $LOG
+        cp -v $BUILD_DIR/gvmd.service /etc/systemd/system/ &>>$LOG
+    fi
 }
 
 service_file_gsad_https () {
-    infoi "Creating HTTPS systemd service file for gsad..." | tee -a $LOG
-    cat << EOF > $BUILD_DIR/gsad.service
-    [Unit]
-    Description=Greenbone Security Assistant daemon (gsad)
-    Documentation=man:gsad(8) https://www.greenbone.net
-    After=network.target gvmd.service
-    Wants=gvmd.service
+    if [[ -f /etc/systemd/system/gsad.service ]]; then
+        warni "gsad service file already exists, skipping creation..."
+    else
+        infoi "Creating HTTPS systemd service file for gsad..." | tee -a $LOG
+        cat << EOF > $BUILD_DIR/gsad.service
+        [Unit]
+        Description=Greenbone Security Assistant daemon (gsad)
+        Documentation=man:gsad(8) https://www.greenbone.net
+        After=network.target gvmd.service
+        Wants=gvmd.service
 
-    [Service]
-    Type=exec
-    #User=gvm
-    #Group=gvm
-    RuntimeDirectory=gsad
-    RuntimeDirectoryMode=2775
-    PIDFile=/run/gsad/gsad.pid
-    ExecStart=/usr/local/sbin/gsad --foreground --listen=127.0.0.1 --port=9392 --rport=80 --ssl-private-key=/var/lib/gvm/private/CA/clientkey.pem --ssl-certificate=/var/lib/gvm/CA/clientcert.pem
-    Restart=always
-    TimeoutStopSec=10
+        [Service]
+        Type=exec
+        #User=gvm
+        #Group=gvm
+        RuntimeDirectory=gsad
+        RuntimeDirectoryMode=2775
+        PIDFile=/run/gsad/gsad.pid
+        ExecStart=/usr/local/sbin/gsad --foreground --listen=127.0.0.1 --port=9392 --rport=80 --ssl-private-key=/var/lib/gvm/private/CA/clientkey.pem --ssl-certificate=/var/lib/gvm/CA/clientcert.pem
+        Restart=always
+        TimeoutStopSec=10
 
-    [Install]
-    WantedBy=multi-user.target
-    Alias=greenbone-security-assistant.service
+        [Install]
+        WantedBy=multi-user.target
+        Alias=greenbone-security-assistant.service
 EOF
-
-    infoi "Installing https systemd service file for gsad..." | tee -a $LOG
-    cp -v $BUILD_DIR/gsad.service /etc/systemd/system/ &>>$LOG
+        infoi "Installing https systemd service file for gsad..." | tee -a $LOG
+        cp -v $BUILD_DIR/gsad.service /etc/systemd/system/ &>>$LOG
+    fi
 }
 
 service_file_gsad_http () {
-    infoi "Creating HTTP systemd service file for gsad..." | tee -a $LOG
-    cat << EOF > $BUILD_DIR/gsad.service
-    [Unit]
-    Description=Greenbone Security Assistant daemon (gsad)
-    Documentation=man:gsad(8) https://www.greenbone.net
-    After=network.target gvmd.service
-    Wants=gvmd.service
+    if [[ -f /etc/systemd/system/gsad.service ]]; then
+        warni "gsad service file already exists, skipping creation..."
+    else
+        infoi "Creating HTTPS systemd service file for gsad..." | tee -a $LOG
+        cat << EOF > $BUILD_DIR/gsad.service
+        [Unit]
+        Description=Greenbone Security Assistant daemon (gsad)
+        Documentation=man:gsad(8) https://www.greenbone.net
+        After=network.target gvmd.service
+        Wants=gvmd.service
 
-    [Service]
-    Type=exec
-    User=gvm
-    Group=gvm
-    RuntimeDirectory=gsad
-    RuntimeDirectoryMode=2775
-    PIDFile=/run/gsad/gsad.pid
-    ExecStart=/usr/local/sbin/gsad --foreground --listen=127.0.0.1 --port=9392 --http-only
-    Restart=always
-    TimeoutStopSec=10
+        [Service]
+        Type=exec
+        User=gvm
+        Group=gvm
+        RuntimeDirectory=gsad
+        RuntimeDirectoryMode=2775
+        PIDFile=/run/gsad/gsad.pid
+        ExecStart=/usr/local/sbin/gsad --foreground --listen=127.0.0.1 --port=9392 --http-only
+        Restart=always
+        TimeoutStopSec=10
 
-    [Install]
-    WantedBy=multi-user.target
-    Alias=greenbone-security-assistant.service
+        [Install]
+        WantedBy=multi-user.target
+        Alias=greenbone-security-assistant.service
 EOF
-
-    infoi "Installing http systemd service file for gsad..." | tee -a $LOG
-    cp -v $BUILD_DIR/gsad.service /etc/systemd/system/ &>>$LOG
+        infoi "Installing https systemd service file for gsad..." | tee -a $LOG
+        cp -v $BUILD_DIR/gsad.service /etc/systemd/system/ &>>$LOG
+    fi
 }
 
 service_file_openvasd () {
-    infoi "Creating systemd service file for openvasd..." | tee -a $LOG
-    cat << EOF > $BUILD_DIR/openvasd.service
-    [Unit]
-    Description=OpenVASD
-    Documentation=https://github.com/greenbone/openvas-scanner/tree/main/rust/openvasd
-    ConditionKernelCommandLine=!recovery
-    [Service]
-    Type=exec
-    User=gvm
-    RuntimeDirectory=openvasd
-    RuntimeDirectoryMode=2775
-    ExecStart=/usr/local/bin/openvasd --mode service_notus --products /var/lib/notus/products --advisories /var/lib/notus/advisories --listening 127.0.0.1:3000
-    SuccessExitStatus=SIGKILL
-    Restart=always
-    RestartSec=60
-    [Install]
-    WantedBy=multi-user.target
+    if [[ -f /etc/systemd/system/openvasd.service ]]; then
+        warni "openvasd service file already exists, skipping creation..."
+    else
+        infoi "Creating systemd service file for openvasd..." | tee -a $LOG
+        cat << EOF > $BUILD_DIR/openvasd.service
+        [Unit]
+        Description=OpenVASD
+        Documentation=https://github.com/greenbone/openvas-scanner/tree/main/rust/openvasd
+        ConditionKernelCommandLine=!recovery
+        [Service]
+        Type=exec
+        User=gvm
+        RuntimeDirectory=openvasd
+        RuntimeDirectoryMode=2775
+        ExecStart=/usr/local/bin/openvasd --mode service_notus --products /var/lib/notus/products --advisories /var/lib/notus/advisories --listening 127.0.0.1:3000
+        SuccessExitStatus=SIGKILL
+        Restart=always
+        RestartSec=60
+        [Install]
+        WantedBy=multi-user.target
 EOF
-
-    infoi "Installing systemd service file for openvasd..." | tee -a $LOG
-    cp -v $BUILD_DIR/openvasd.service /etc/systemd/system/ &>>$LOG
+        infoi "Installing systemd service file for openvasd..." | tee -a $LOG
+        cp -v $BUILD_DIR/openvasd.service /etc/systemd/system/ &>>$LOG
+    fi
 }
 
 feed_sync () {
@@ -1034,15 +1244,50 @@ feed_sync () {
 }
 
 create_feed_sync_cron () {
-    # Write current user's cron jobs to file
-    sudo crontab -l > /tmp/feed_sync_cron &>>$LOG
-    # Append a run feed-sync every 3 months cron job
-    echo '0 1 1 3,6,9,12 * /usr/local/bin/greenbone-feed-sync --type ALL >> /var/log/gvm/feed-sync.log 2>&1' | sudo tee -a /tmp/feed_sync_cron | tee -a $LOG
+    if [[ -f /tmp/feed_sync_cron ]]; then
+        rm /tmp/feed_sync_cron &>>$LOG
+    fi
 
-    # Install new cron file
-    sudo crontab /tmp/feed_sync_cron &>>$LOG
+    infoi "Adding feed-sync cron job..." | tee -a $LOG
+    crontab -l >/tmp/feed_sync_cron
+
+    if grep -qF "/usr/local/bin/greenbone-feed-sync --type ALL" /tmp/feed_sync_cron; then
+        warni "Feed sync cronjob already present!" | tee -a $LOG
+    else
+        # Append a "run feed-sync every quarter at 1am" cron job
+        echo '0 1 1 3,6,9,12 * /usr/local/bin/greenbone-feed-sync --type ALL >>/var/log/gvm/feed-sync.log 2>&1' >>/tmp/feed_sync_cron
+        crontab /tmp/feed_sync_cron &>>$LOG
+
+        if grep -qF "/usr/local/bin/greenbone-feed-sync --type ALL" /tmp/feed_sync_cron; then
+            successi "Cronjob successfully added!" | tee -a $LOG
+        else
+            errori "Feedsync cronjob was not added!" | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Append this to the end of your cronjob file: 0 1 1 3,6,9,12 * /usr/local/bin/greenbone-feed-sync --type ALL >>/var/log/gvm/feed-sync.log 2>&1" | tee -a $LOG | tee -a $FIX_LOG
+            sleep 3
+        fi
+    fi
 }
 
+create_gvm_user () {
+    infoi "Creating user and group..." | tee -a $LOG
+    if id -u "gvm" &>>$LOG; then
+        warni "gvm user already exists!" | tee -a $LOG
+    else
+        useradd -rMUG sudo -s /usr/sbin/nologin gvm &>>$LOG
+        if [ $? -ne 0 ]; then
+            errori "Unable to create gvm user!" | tee -a $LOG | tee -a $FIX_LOG
+            infoi "Run: useradd -rMUG sudo -s /usr/sbin/nologin gvm" | tee -a $LOG | tee -a $FIX_LOG
+            infoi "then run script again." | tee -a $LOG | tee -a $FIX_LOG
+            exit 1
+        fi
+    fi
+
+    if id -nG "$USER" | grep -qw "gvm"; then
+        warni "$USER already belongs to group gvm" | tee -a $LOG
+    else
+        usermod -aG gvm $USER &>>$LOG
+    fi
+}
 
 # ————— Command flags checker ——————————————————————————————————
 if [[ $1 == -* ]]; then
@@ -1081,7 +1326,7 @@ if [[ $1 == -* ]]; then
             ;;
         --stop)
             stop_services
-            if [ $? -eq 0 ]; then
+            if [[ $? -eq 0 ]]; then
                 echo
                 success "All Greenbone processes stopped."
                 echo
@@ -1095,7 +1340,7 @@ if [[ $1 == -* ]]; then
             ;;
         --restart)
             restart_services
-            if [ $? -eq 0 ]; then
+            if [[ $? -eq 0 ]]; then
                 echo
                 success "All Greenbone processes successfully restarted"
                 echo
@@ -1113,16 +1358,96 @@ if [[ $1 == -* ]]; then
             ;;
         --check-setup)
             check_setup
-            if [ "$CHECK_PASSED" = true ]; then
+            if [[ "$CHECK_PASSED" = true ]]; then
                 success "Your GVM install is correct and up to date!"
                 echo
-                start_services
+                SERVICES=("ospd-openvas" "gvmd" "gsad" "openvasd")
+                infoi "Starting Greenbone processes..."
+                for SERVICE_NAME in "${SERVICES[@]}"; do
+                    if systemctl is-active --quiet "$SERVICE_NAME"; then
+                        infoic "$SERVICE_NAME already running."
+                    else
+                        infoi "$SERVICE_NAME not running, starting $SERVICE_NAME"
+                        systemctl start $SERVICE_NAME
+                    fi
+                done
+                unset SERVICES
                 exit 0
             else
                 echo
                 error "GVM is not installed correctly, check console for errors"
                 exit 1
             fi
+            ;;
+        --no-dependencies)
+            infoi "Skipping dependencies..."
+            SKIP_DEPENDENCIES=true
+            ;;
+        --install-dependencies)
+            install_dependencies
+            ;;
+        --install-gvm-libs)
+            install_gvm_libs
+            ;;
+        --install-gvmd)
+            install_gvmd
+            ;;
+        --install-pg-gvm)
+            install_pg_gvm
+            ;;
+        --install-gsa)
+            install_gsa
+            ;;
+        --install-gsad)
+            install_gsad
+            ;;
+        --install-openvas-smb)
+            install_openvas_smb
+            ;;
+        --install-openvas-scanner)
+            install_openvas_scanner
+            ;;
+        --install-ospd-openvas)
+            install_ospd_openvas
+            ;;
+        --install-openvasd)
+            install_openvasd
+            ;;
+        --install-feed-sync)
+            install_feed_sync
+            ;;
+        --install-gvm-tools)
+            install_gvm_tools
+            ;;
+        --install-redis-server)
+            setup_redis_server
+            ;;
+        --feed-validation)
+            feed_validation
+            ;;
+        --set-scan-permissions)
+            set_sudo_scan
+            ;;
+        --install-postgresql)
+            setup_postgresql
+            ;;
+        --servicefile-ospd-openvas)
+            service_file_ospd_openvas
+            ;;
+        --servicefile-gvmd)
+            service_file_gvmd
+            ;;
+        --servicefile-gsad)
+            service_file_gsad_https
+            ;;
+        --servicefile-openvasd)
+            service_file_openvasd
+            ;;
+        --create-cronjob)
+            create_feed_sync_cron
+            ;;
+        --create-gvm-user)
+            create_gvm_user
             ;;
         *)
             warni "Invalid argument(s). Use --help to view valid arguments."
@@ -1139,7 +1464,7 @@ if [[ $UID -ne 0 ]]; then
 fi
 
 echo "Installer version: $INSTALLER_VERSION" | tee -a $LOG
-echo "Last updated $((($(date +%s)-$(date -d "$LAST_UPDATED" +%s))/(86400))) days ago ($LAST_UPDATED)"
+echo "Last updated $((($(date +%s)-$(date -d "$LAST_UPDATED" +%s))/(86400))) days ago ($LAST_UPDATED)" | tee -a $LOG
 
 # ————— Check for latest ———————————————————————————————————————
 LATEST_TAG=$(curl -sSL "https://api.github.com/repos/ArcTrooper210/GVM-Installer-Script/releases/latest" | jq -r .tag_name)
@@ -1150,10 +1475,10 @@ else
     VER_LATEST=${LATEST_TAG:1}
     VER_INST=${INSTALLER_VERSION:1}
     if dpkg --compare-versions "$VER_INST" lt "$VER_LATEST"; then
-        echo "✨ A new version is available: $LATEST_TAG (you have $INSTALLER_VERSION)." | tee -a $LOG
-        echo "🔗 Release notes: https://github.com/ArcTrooper210/GVM-Installer-Script/releases/latest" | tee -a $LOG
+        echo "A new version is available: $LATEST_TAG (you have $INSTALLER_VERSION)." | tee -a $LOG
+        echo "Release notes: https://github.com/ArcTrooper210/GVM-Installer-Script/releases/latest" | tee -a $LOG
     elif dpkg --compare-versions "$VER_INST" gt "$VER_LATEST"; then
-        echo -e "\e[2m\e[1m\e[31mHow do you have a version newer than release...\e[0m" | tee -a $LOG
+        echo -e "\e[2m\e[1m\e[31mHow do you have a version newer than release...\e[0m"
     else
         successi "You have the latest version" | tee -a $LOG
     fi
@@ -1170,7 +1495,7 @@ while true; do
         [yY] ) echo "Continuing...";
             break;;
         [nN] ) echo "Exiting...";
-            exit;;
+            exit 1;;
         * ) warni "Invalid response";;
     esac
 done
@@ -1195,8 +1520,6 @@ infoi "Checking for running Greenbone services..." | tee -a $LOG
 for SERVICE_NAME in "${SERVICES[@]}"; do
     if systemctl is-active --quiet "$SERVICE_NAME" &>>$LOG; then
         systemctl stop $SERVICE_NAME &>>$LOG
-    else
-        continue
     fi
 done
 
@@ -1207,8 +1530,6 @@ for SERVICE_NAME in "${SERVICES[@]}"; do
         errori "Service '$SERVICE_NAME' failed to stop." | tee -a $LOG
         infoi "Run 'sudo systemctl stop $SERVICE_NAME'" | tee -a $LOG
         ALL_STOPPED=false
-    else
-        continue
     fi
 done
 
@@ -1235,9 +1556,7 @@ fi
 
 # ————————————————— Start GVM install ——————————————————————————
 # ————— Create user and group ——————————————————————————————————
-infoi "Creating user and group..." | tee -a $LOG
-sudo useradd -rMU -G sudo -s /usr/sbin/nologin gvm &>>$LOG
-sudo usermod -aG gvm $USER &>>$LOG
+create_gvm_user
 
 
 # ──── Setting Environment Variables and PATH ——————————————————
@@ -1257,15 +1576,11 @@ mkdir -p $INSTALL_DIR &>>$LOG
 
 
 # ──── Install dependencies ————————————————————————————————————
-infoi "Updating packages..." | tee -a $LOG
-apt-get update &>>$LOG
-apt-get upgrade -qy &>>$LOG
-infoi "Installing Dependencies..." | tee -a $LOG
-NEEDRESTART_MODE=a apt-get install --no-install-recommends -qy build-essential curl cmake pkg-config python3 python3-pip gnupg libcjson-dev libcurl4-gnutls-dev libgcrypt-dev libglib2.0-dev libgnutls28-dev libgpgme-dev libhiredis-dev libnet1-dev libpaho-mqtt-dev libpcap-dev libssh-dev libxml2-dev uuid-dev libldap2-dev libradcli-dev libbsd-dev libical-dev libpq-dev postgresql-server-dev-all rsync xsltproc dpkg fakeroot gnutls-bin gpgsm nsis openssh-client python3-lxml rpm smbclient snmp socat sshpass texlive-fonts-recommended texlive-latex-extra wget xmlstarlet zip libbrotli-dev libmicrohttpd-dev gcc-mingw-w64 libpopt-dev libunistring-dev heimdal-multidev perl-base bison libgcrypt20-dev libksba-dev nmap libjson-glib-dev krb5-multidev libsnmp-dev python3-setuptools python3-packaging python3-wrapt python3-cffi python3-psutil python3-defusedxml python3-paramiko python3-redis python3-gnupg python3-paho-mqtt libssl-dev python3-venv cargo postgresql python3-impacket &>>$LOG
-apt-get install -qy rustup &>>$LOG
-
-infoi "Updating rustup..." | tee -a $LOG
-rustup default stable &>>$LOG
+if [[ $SKIP_DEPENDENCIES = false ]]; then
+    install_dependencies
+elif [[ $SKIP_DEPENDENCIES = true ]]; then
+    warni "Skipping installation of dependencies..."  | tee -a $LOG
+fi
 
 
 # ————— Importing the Greenbone Signing Key ————————————————————
@@ -1349,12 +1664,14 @@ setup_postgresql
 
 # ————— Setting up an Admin User ———————————————————————————————
 infoi "Creating admin user..." | tee -a $LOG
-/usr/local/sbin/gvmd --create-user="$ADUSER" --password="$ADPW"
-if [ $? -eq 0 ]; then
+OUT="$(/usr/local/sbin/gvmd --create-user="$ADUSER" --password="$ADPW")"
+if [[ "$OUT" = "User created." ]]; then
     successi "Successfully created admin user" | tee -a $LOG
+elif [[ "$OUT" = "User exists already." ]]; then
+    warni "$ADUSER already exists" | tee -a $LOG
 else
     error "Failed to create admin user. Check /var/log/gvm/gvmd.log" | tee -a $FIX_LOG
-    infoi "Run: sudo /usr/local/sbin/gvmd --create-user="adminUsername" --password="adminPassword"" | tee -a $FIX_LOG
+    warni "Run: sudo /usr/local/sbin/gvmd --create-user="adminUsername" --password="adminPassword"" | tee -a $FIX_LOG
     sleep 4
 fi
 unset ADPW
@@ -1438,12 +1755,12 @@ if [ $CHECK_PASSED = true ]; then
     echo
     successi "Greenbone Community Edition install is completed!" | tee -a $LOG
     echo
-    infoi "You can change the password with:"
-    infoi "sudo gvmd --user='yourCurrentUsername' --new-password='yourNewPassword'"
+    infoi "You can change the password with:" | tee -a $LOG
+    infoi "sudo gvmd --user='yourCurrentUsername' --new-password='yourNewPassword'" | tee -a $LOG
     echo
-    infoi "You can change the username with:"
-    infoi "sudo gvmd --create-user='yourNewUsername' --password='yourPassword' --role=Admin"
-    infoi "sudo gvmd --delete-user='yourOldUsername' --inheritor='yourNewUsername'"
+    infoi "You can change the username with:" | tee -a $LOG
+    infoi "sudo gvmd --create-user='yourNewUsername' --password='yourPassword' --role=Admin" | tee -a $LOG
+    infoi "sudo gvmd --delete-user='yourOldUsername' --inheritor='yourNewUsername'" | tee -a $LOG
     echo
     echo
     sleep 5
@@ -1451,11 +1768,11 @@ if [ $CHECK_PASSED = true ]; then
     # ————— Start gsa interface ————————————————————————————————
     infoi "Starting GSA interface..." | tee -a $LOG
     if [ $HTTP = "https" ]; then
-        infoi "If your browser doesn't open. Go to: https://${GVM_CERTIFICATE_SAN_DNS}:9392"
-        xdg-open "https://${GVM_CERTIFICATE_SAN_DNS}:9392" 2>/dev/null >/dev/null &
+        infoi "If your browser doesn't open. Go to: https://${GVM_CERTIFICATE_SAN_DNS}:9392" | tee -a $LOG
+        xdg-open "https://${GVM_CERTIFICATE_SAN_DNS}:9392" &>>$LOG
     else
-        infoi "If your browser doesn't open." | echo "Go to: http://127.0.0.1:9392"
-        xdg-open "http://127.0.0.1:9392" 2>/dev/null >/dev/null &
+        infoi "If your browser doesn't open." | echo "Go to: http://127.0.0.1:9392" | tee -a $LOG
+        xdg-open "http://127.0.0.1:9392" &>>$LOG
     fi
     exit 0
 else
