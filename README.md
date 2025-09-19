@@ -44,7 +44,7 @@ These arguments will install specific modules:"
 --feed-validation             Installs Greenbone GnuPG keychain to validate feed content"
 --create-cronjob              Creates a cronjob to run greenbone-feed-sync every quarter"
 --create-gvm-user             Creates gvm user and group"
---install-dependencies        Installs Greenbone apt depencencies"
+--install-dependencies        Installs Greenbone apt dependencies"
 ```
 
 ## Troubleshooting

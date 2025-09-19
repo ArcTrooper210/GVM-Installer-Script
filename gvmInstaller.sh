@@ -4,9 +4,9 @@
 INSTALLER_VERSION="v2.0.0"
 LAST_UPDATED="2025-09-19"
 HTTP="https"
-LOG=/tmp/gvmInstaller.log
-CHECK_LOG=/tmp/gvmChecksSetup.log
-FIX_LOG=/tmp/gvmFixesNeeded.log
+LOG=gvmInstaller.log
+CHECK_LOG=gvmChecksSetup.log
+FIX_LOG=gvmFixesNeeded.log
 UNINSTALL_LOG=gvmUninstall.log
 SKIP_DEPENDENCIES=false
 
@@ -66,7 +66,7 @@ show_help () {
     echo "--install-gsa                 gsa is a JavaScript web application"
     echo "--install-gsad                gsad serves static content like images and provides an API for gsa"
     echo "--install-openvas-smb         openvas-smb is a helper module for openvas-scanner"
-    echo "--install-openvas-scanner     openvas-scanner is a scan engine that executes Vulnerability Tests"
+    echo "--install-openvas-scanner     openvas-scanner is a scan engine that executes Vulnerability Tests (VTs)"
     echo "--install-ospd-openvas        ospd-openvas allows gvmd to remotely control openvas-scanner"
     echo "--install-openvasd            OpenVASD is used for detecting vulnerable products"
     echo "--install-feed-sync           greenbone-feed-sync is a Python script to download feed data from the Greenbone Community Feed"
@@ -81,6 +81,7 @@ show_help () {
     echo "--feed-validation             Installs Greenbone GnuPG keychain to validate feed content"
     echo "--create-cronjob              Creates a cronjob to run greenbone-feed-sync every quarter"
     echo "--create-gvm-user             Creates gvm user and group"
+    echo "--install-dependencies        Installs Greenbone apt dependencies"
     echo
 }
 
